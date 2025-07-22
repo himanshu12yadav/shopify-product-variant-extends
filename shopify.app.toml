@@ -1,0 +1,37 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "7ae758b1a3d6d6b2824ed0b326775cfd"
+application_url = "https://fashion-cab-terrace-styles.trycloudflare.com"
+embedded = true
+name = "product-extends-app"
+handle = "product-extends-app"
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products,read_products, write_inventory, read_inventory"
+
+[auth]
+redirect_urls = [
+  "https://fashion-cab-terrace-styles.trycloudflare.com/auth/callback",
+  "https://fashion-cab-terrace-styles.trycloudflare.com/auth/shopify/callback",
+  "https://fashion-cab-terrace-styles.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[build]
+dev_store_url = "sprinix-store.myshopify.com"
+automatically_update_urls_on_dev = true
+include_config_on_deploy = true
