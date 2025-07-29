@@ -30,3 +30,59 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+
+model VariantOption {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Color", "Size", "Material"
+  type        String   @default("text") // e.g., "text", "number", "image", "color"
+  position    Int      @default(0)
+  isRequired  Boolean  @default(true)
+  shop        String   // Link to shop from Session
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  values      VariantOptionValue[]
+  productVariants ProductVariant[]
+
+  @@unique([shop, name]) // Prevent duplicate option names per shop
+  @@map("variant_options")
+}
+
+
+model VariantOptionValue {
+  id        String  @id @default(cuid())
+  value     String  // e.g., "Red", "Blue", "Large", "Small"
+  position  Int     @default(0)
+  isActive  Boolean @default(true)
+
+  variantOptionId String
+  variantOption   VariantOption @relation(fields: [variantOptionId], references: [id], onDelete: Cascade)
+
+  productVariants ProductVariant[]
+
+  @@unique([variantOptionId, value]) // Prevent duplicate values per option
+  @@map("variant_option_values")
+}
+
+
+model ProductVariant {
+  id            String  @id @default(cuid())
+  productId     String
+  sku           String?
+  price         Float @default(0)
+  compareAtPrice Float? @default(0)
+  inventory     Int     @default(0)
+  isActive      Boolean @default(true)
+
+  shop          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  variantOptions VariantOption[]
+  optionValues   VariantOptionValue[]
+
+  @@map("product_variants")
+}
+
