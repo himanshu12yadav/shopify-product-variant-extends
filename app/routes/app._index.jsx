@@ -15,7 +15,7 @@
 
 import { authenticate } from "../shopify.server.js";
 import { json } from "@remix-run/node";
-import { createOptions, getOptions, updateOptions } from "../lib/shop.server.js";
+import { createOptions, getOptions, updateOptions, deleteOptions } from "../lib/shop.server.js";
 import {
   Page,
   Layout,
@@ -31,7 +31,7 @@ import ProductSelectionModal from "../components/modals/ProductSelectionModal.js
 import { useOptions } from "../hooks/useOptions.js";
 import { useModals } from "../hooks/useModals.js";
 import { useToast } from "../hooks/useToast.js";
-import { createOptionObject, updateOptionObject, prepareOptionForSubmit } from "../utils/optionUtils.js";
+import { prepareOptionForSubmit } from "../utils/optionUtils.js";
 import { useSubmit, useLoaderData } from "@remix-run/react";
 import { useState, useCallback } from "react";
 
@@ -74,16 +74,33 @@ export const loader = async ({ request }) => {
  * @returns {Object} JSON response indicating success/failure
  */
 export const action = async ({ request }) => {
-  const formData = await request.formData();
-  const actionType = formData.get("actionType");
-  const admin = await authenticate.admin(request);
+  try {
+    const formData = await request.formData();
+    const actionType = formData.get("actionType");
+    console.log("Action type:", actionType);
+    
+    const admin = await authenticate.admin(request);
+    console.log("Authenticated shop:", admin.session.shop);
 
   // Handle creating a new product option
   if (actionType === "Add Option") {
-    const optionSet = JSON.parse(formData.get("optionSet"));
-    const { optionName, values, optionType } = optionSet;
-    
     try {
+      const optionSetRaw = formData.get("optionSet");
+      console.log("Raw optionSet:", optionSetRaw);
+      
+      if (!optionSetRaw) {
+        throw new Error("No optionSet data provided");
+      }
+      
+      const optionSet = JSON.parse(optionSetRaw);
+      console.log("Parsed optionSet:", optionSet);
+      
+      const { optionName, values, optionType } = optionSet;
+      
+      if (!optionName || !values || !optionType) {
+        throw new Error("Missing required fields: optionName, values, or optionType");
+      }
+      
       // Create the option in the database with all its values
       const savedOption = await createOptions(admin.session.shop, {
         name: optionName,
@@ -129,7 +146,30 @@ export const action = async ({ request }) => {
     }
   }
 
+  // Handle deleting one or more product options
+  if (actionType === "Delete Options") {
+    const optionIds = JSON.parse(formData.get("optionIds"));
+    
+    try {
+      // Call the server-side function to delete the options from the database.
+      const result = await deleteOptions(optionIds, admin.session.shop);
+      console.log("Options deleted successfully:", result);
+      return json({ 
+        success: true, 
+        count: result.count,
+        deletedOptions: result.deletedOptions 
+      });
+    } catch (error) {
+      console.error("Error deleting options:", error);
+      return json({ success: false, error: error.message }, { status: 500 });
+    }
+  }
+
   return null;
+  } catch (error) {
+    console.error("Action function error:", error);
+    return json({ success: false, error: "An unexpected error occurred" }, { status: 500 });
+  }
 };
 
 /**
@@ -148,7 +188,7 @@ export default function Index() {
   const submit = useSubmit(); // Remix hook for form submissions
   
   // Custom hooks for state management
-  const { options, handleToggleValueChecked, handleToggleAllValues, addOption, updateOption, removeOptions } = useOptions(loadedOptions);
+  const { options, handleToggleValueChecked, handleToggleAllValues } = useOptions(loadedOptions);
   const { modalActive, editModalActive, productModalActive, toggleModal, toggleEditModal, toggleProductModal } = useModals();
   const { toastActive, toastMessage, showToast, hideToast } = useToast();
   
@@ -250,11 +290,7 @@ export default function Index() {
   const handleAddOption = async (optionData) => {
     setIsLoading(true);
     try {
-      // Create option object for immediate UI update (optimistic update)
-      const newOption = createOptionObject(optionData.optionName, optionData.values, optionData.optionType);
-      addOption(newOption);
-      
-      // Submit to server to persist in database
+      // Submit to server to persist in database using Remix's submit
       submit(
         {
           actionType: "Add Option",
@@ -266,7 +302,8 @@ export default function Index() {
       showToast(`Option "${optionData.optionName}" created successfully!`);
       toggleModal();
     } catch (error) {
-      showToast("Error creating option. Please try again.");
+      console.error("Add operation failed:", error);
+      showToast(`Failed to create option: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -286,12 +323,8 @@ export default function Index() {
   const handleEditOption = async (editData) => {
     setIsLoading(true);
     try {
-      // Update option object for immediate UI update (optimistic update)
-      const updatedOption = updateOptionObject(editData.originalOption, editData.optionName, editData.values, editData.optionType);
-      updateOption(updatedOption);
-
-      // Submit to server to persist changes in database
-      await submit(
+      // Submit to server to persist changes in database using Remix's submit
+      submit(
         {
           actionType: "Edit Option",
           optionId: editData.optionId,
@@ -303,24 +336,95 @@ export default function Index() {
       showToast(`Option "${editData.optionName}" updated successfully!`);
       closeEditModal();
     } catch (error) {
-      showToast("Error updating option. Please try again.");
+      console.error("Edit operation failed:", error);
+      showToast(`Failed to update option: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   /**
-   * Handle bulk deletion of selected options
-   * Removes multiple options at once from the UI
-   * TODO: Add server-side bulk delete functionality
+   * Handle single option deletion
+   * Deletes a single option with confirmation and proper error handling
+   * 
+   * @param {string} optionId - ID of the option to delete
    */
-  const handleBulkDelete = () => {
+  const handleSingleDelete = async (optionId) => {
+    if (!optionId) {
+      showToast("Invalid option ID provided for deletion.");
+      return;
+    }
+
+    const optionToDelete = options.find(opt => opt.id === optionId);
+    if (!optionToDelete) {
+      showToast("Option not found.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Submit deletion using Remix's submit
+      submit(
+        {
+          actionType: "Delete Options",
+          optionIds: JSON.stringify([optionId]),
+        },
+        { method: "post" },
+      );
+      
+      // Show success message
+      showToast(`Successfully deleted option: ${optionToDelete.name}`);
+
+    } catch (error) {
+      console.error("Delete operation failed:", error);
+      showToast(`Failed to delete option: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * Handle bulk deletion of selected options.
+   * This function performs proper state management with error handling.
+   */
+  const handleBulkDelete = async () => {
     const deletedCount = selectedItems.length;
-    removeOptions(selectedItems); // Remove from local state
-    showToast(
-      `${deletedCount} option${deletedCount === 1 ? "" : "s"} deleted successfully`,
-    );
-    setSelectedItems([]); // Clear selection
+    if (deletedCount === 0) {
+      showToast("No options selected for deletion.");
+      return;
+    }
+
+    // Get option names for better user feedback
+    const optionsToDelete = options.filter(option => selectedItems.includes(option.id));
+    const optionNames = optionsToDelete.map(opt => opt.name).join(', ');
+
+    setIsLoading(true);
+
+    try {
+      // Submit deletion using Remix's submit
+      submit(
+        {
+          actionType: "Delete Options",
+          optionIds: JSON.stringify(selectedItems),
+        },
+        { method: "post" },
+      );
+      
+      // Show success message with details
+      showToast(
+        `Successfully deleted ${deletedCount} option${deletedCount === 1 ? "" : "s"}: ${optionNames}`
+      );
+
+      // Clear the selection state
+      setSelectedItems([]);
+
+    } catch (error) {
+      console.error("Delete operation failed:", error);
+      showToast(`Failed to delete options: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -350,6 +454,7 @@ export default function Index() {
               onToggleValueChecked={handleToggleValueChecked}
               onEdit={openEditModal}
               onBulkDelete={handleBulkDelete}
+              onSingleDelete={handleSingleDelete}
               onAddOption={toggleModal}
             />
           </Layout.Section>

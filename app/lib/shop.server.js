@@ -139,3 +139,63 @@ export const updateOptions = async (optionId, optionData) => {
     throw error; // Re-throw to be handled by calling function
   }
 };
+
+/**
+ * Deletes one or more product options from the database.
+ * The `onDelete: Cascade` in the Prisma schema ensures that all related
+ * `VariantOptionValue` records are also deleted automatically.
+ *
+ * @param {string|string[]} optionIds - An option ID or array of option IDs to delete.
+ * @param {string} shop - The shop identifier to ensure we only delete options belonging to this shop.
+ * @returns {Object} Result object with success status and deleted count.
+ * @throws {Error} If the database operation fails.
+ */
+export const deleteOptions = async (optionIds, shop) => {
+  try {
+    // Ensure optionIds is always an array
+    const idsArray = Array.isArray(optionIds) ? optionIds : [optionIds];
+    
+    // Validate input
+    if (!idsArray || idsArray.length === 0) {
+      throw new Error("No option IDs provided for deletion");
+    }
+
+    if (!shop) {
+      throw new Error("Shop identifier is required for deletion");
+    }
+
+    // First, verify that all options belong to this shop for security
+    const existingOptions = await prisma.variantOption.findMany({
+      where: {
+        id: { in: idsArray },
+        shop: shop
+      },
+      select: { id: true, name: true }
+    });
+
+    if (existingOptions.length !== idsArray.length) {
+      const foundIds = existingOptions.map(opt => opt.id);
+      const notFoundIds = idsArray.filter(id => !foundIds.includes(id));
+      throw new Error(`Some options not found or don't belong to this shop: ${notFoundIds.join(', ')}`);
+    }
+
+    // Delete the options (cascade will handle related values)
+    const deletedResult = await prisma.variantOption.deleteMany({
+      where: {
+        id: { in: idsArray },
+        shop: shop // Extra security - ensure we only delete from current shop
+      },
+    });
+
+    console.log(`Successfully deleted ${deletedResult.count} options:`, existingOptions.map(opt => opt.name).join(', '));
+    
+    return {
+      success: true,
+      count: deletedResult.count,
+      deletedOptions: existingOptions
+    };
+  } catch (error) {
+    console.error("Error deleting variant options:", error);
+    throw new Error(`Failed to delete options: ${error.message}`);
+  }
+};

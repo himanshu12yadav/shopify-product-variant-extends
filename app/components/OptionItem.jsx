@@ -10,6 +10,7 @@ import {
   EditIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  DeleteIcon,
 } from "@shopify/polaris-icons";
 
 export default function OptionItem({
@@ -18,7 +19,8 @@ export default function OptionItem({
   onToggleExpansion,
   onToggleAllValues,
   onToggleValueChecked,
-  onEdit
+  onEdit,
+  onDelete
 }) {
   const { id, name, values, type } = option;
 
@@ -131,6 +133,15 @@ export default function OptionItem({
               onClick={() => onEdit(option)}
             >
               Edit
+            </Button>
+            <Button
+              size="slim"
+              icon={DeleteIcon}
+              variant="tertiary"
+              tone="critical"
+              onClick={() => onDelete && onDelete(option.id)}
+            >
+              Delete
             </Button>
           </div>
         </div>

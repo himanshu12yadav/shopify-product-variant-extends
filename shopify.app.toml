@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "7ae758b1a3d6d6b2824ed0b326775cfd"
-application_url = "https://fashion-cab-terrace-styles.trycloudflare.com"
+application_url = "https://ec-jewelry-finally-formal.trycloudflare.com"
 embedded = true
 name = "product-extends-app"
 handle = "product-extends-app"
@@ -23,9 +23,9 @@ scopes = "write_products,read_products, write_inventory, read_inventory"
 
 [auth]
 redirect_urls = [
-  "https://fashion-cab-terrace-styles.trycloudflare.com/auth/callback",
-  "https://fashion-cab-terrace-styles.trycloudflare.com/auth/shopify/callback",
-  "https://fashion-cab-terrace-styles.trycloudflare.com/api/auth/callback"
+  "https://ec-jewelry-finally-formal.trycloudflare.com/auth/callback",
+  "https://ec-jewelry-finally-formal.trycloudflare.com/auth/shopify/callback",
+  "https://ec-jewelry-finally-formal.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

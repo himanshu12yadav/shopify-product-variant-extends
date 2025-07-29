@@ -18,6 +18,7 @@ export default function OptionsList({
   onToggleValueChecked,
   onEdit,
   onBulkDelete,
+  onSingleDelete,
   onAddOption
 }) {
   const promotedBulkActions = [
@@ -76,6 +77,7 @@ export default function OptionsList({
                   onToggleAllValues={onToggleAllValues}
                   onToggleValueChecked={onToggleValueChecked}
                   onEdit={onEdit}
+                  onDelete={onSingleDelete}
                 />
               )}
             />
