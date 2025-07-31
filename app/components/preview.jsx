@@ -332,7 +332,7 @@ export default function Preview({ options = [] }) {
                                     </div>
                                 </div>
                             ) : (
-                                <Box textAlign="center" padding="800">
+                                <Box padding="800">
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
                                         <Text variant="headingMd" color="subdued">
                                             No Active Options
@@ -345,7 +345,7 @@ export default function Preview({ options = [] }) {
                             )}
                         </div>
                     ) : (
-                        <Box textAlign="center" padding="800">
+                        <Box padding="800">
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
                                 <div style={{
                                     width: '120px',

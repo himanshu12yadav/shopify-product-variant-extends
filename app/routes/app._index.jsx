@@ -1,10 +1,10 @@
 /**
  * Product Options Manager - Main Route Component
- * 
+ *
  * This is the main page for managing product options in the Shopify app.
  * It handles creating, editing, and managing product options with different types
  * (text, number, image, color) and their associated values.
- * 
+ *
  * Key Features:
  * - Create new product options with multiple types
  * - Edit existing options and their values
@@ -15,13 +15,13 @@
 
 import { authenticate } from "../shopify.server.js";
 import { json } from "@remix-run/node";
-import { createOptions, getOptions, updateOptions, deleteOptions } from "../lib/shop.server.js";
 import {
-  Page,
-  Layout,
-  Toast,
-  Frame,
-} from "@shopify/polaris";
+  createOptions,
+  getOptions,
+  updateOptions,
+  deleteOptions,
+} from "../lib/shop.server.js";
+import { Page, Layout, Toast, Frame } from "@shopify/polaris";
 import Preview from "../components/preview.jsx";
 import OptionsHeader from "../components/OptionsHeader.jsx";
 import OptionsList from "../components/OptionsList.jsx";
@@ -37,39 +37,39 @@ import { useState, useCallback } from "react";
 
 /**
  * Loader function - Runs on the server before the page loads
- * 
+ *
  * Fetches all existing product options for the current shop from the database.
  * This data is available to the component via useLoaderData().
- * 
+ *
  * @param {Object} request - The incoming HTTP request
  * @returns {Object} JSON response with shop options and API key
  */
 export const loader = async ({ request }) => {
   const admin = await authenticate.admin(request);
-  
+
   try {
     // Fetch all options for this shop from the database
     const options = await getOptions(admin.session.shop);
-    return json({ 
+    return json({
       apiKey: process.env.SHOPIFY_API_KEY || "",
-      options: options || []
+      options: options || [],
     });
   } catch (error) {
     console.error("Error loading options:", error);
     // Return empty array if there's an error loading options
-    return json({ 
+    return json({
       apiKey: process.env.SHOPIFY_API_KEY || "",
-      options: []
+      options: [],
     });
   }
 };
 
 /**
  * Action function - Handles form submissions and server-side mutations
- * 
+ *
  * This function processes different types of actions (Add Option, Edit Option)
  * based on the actionType form field. All database mutations happen here.
- * 
+ *
  * @param {Object} request - The incoming HTTP request with form data
  * @returns {Object} JSON response indicating success/failure
  */
@@ -78,103 +78,138 @@ export const action = async ({ request }) => {
     const formData = await request.formData();
     const actionType = formData.get("actionType");
     console.log("Action type:", actionType);
-    
+
     const admin = await authenticate.admin(request);
     console.log("Authenticated shop:", admin.session.shop);
 
-  // Handle creating a new product option
-  if (actionType === "Add Option") {
-    try {
-      const optionSetRaw = formData.get("optionSet");
-      console.log("Raw optionSet:", optionSetRaw);
-      
-      if (!optionSetRaw) {
-        throw new Error("No optionSet data provided");
+    if (actionType === "search-products") {
+      const query = formData.get("query");
+      const selectedProducts = JSON.parse(
+        formData.get("selectedProducts") || "[]",
+      );
+
+      const options = JSON.parse(formData.get("options") || "[]");
+
+      try {
+        // Import the getProductId function
+        const { getProductId } = await import("../../graphql/index.js");
+
+        // Get Product details for each selected product using their handles
+
+        const productDetails = await Promise.all(
+          selectedProducts.map(async (productId) => {
+            try {
+              // productId should be the product handle
+              const productData = await getProductId(admin, productId);
+              console.log("ProductData: ", productData);
+              return productData;
+            } catch (error) {
+              console.error(`Error fetching product ${productId}:`, error);
+              return null;
+            }
+          }),
+        );
+      } catch (error) {}
+    }
+
+    // Handle creating a new product option
+    if (actionType === "Add Option") {
+      try {
+        const optionSetRaw = formData.get("optionSet");
+        console.log("Raw optionSet:", optionSetRaw);
+
+        if (!optionSetRaw) {
+          throw new Error("No optionSet data provided");
+        }
+
+        const optionSet = JSON.parse(optionSetRaw);
+        console.log("Parsed optionSet:", optionSet);
+
+        const { optionName, values, optionType } = optionSet;
+
+        if (!optionName || !values || !optionType) {
+          throw new Error(
+            "Missing required fields: optionName, values, or optionType",
+          );
+        }
+
+        // Create the option in the database with all its values
+        const savedOption = await createOptions(admin.session.shop, {
+          name: optionName,
+          type: optionType, // e.g., "text", "color", "number", "image"
+          values: values.map((value, index) => ({
+            value,
+            position: index,
+            isActive: true,
+          })),
+        });
+
+        console.log("Option created successfully:", savedOption);
+        return json({ success: true, option: savedOption });
+      } catch (error) {
+        console.error("Error creating option:", error);
+        return json({ success: false, error: error.message }, { status: 500 });
       }
-      
-      const optionSet = JSON.parse(optionSetRaw);
-      console.log("Parsed optionSet:", optionSet);
-      
+    }
+
+    // Handle updating an existing product option
+    if (actionType === "Edit Option") {
+      const optionId = formData.get("optionId");
+      const optionSet = JSON.parse(formData.get("optionSet"));
       const { optionName, values, optionType } = optionSet;
-      
-      if (!optionName || !values || !optionType) {
-        throw new Error("Missing required fields: optionName, values, or optionType");
+
+      try {
+        // Update the option and replace all its values
+        const updatedOption = await updateOptions(optionId, {
+          name: optionName,
+          type: optionType,
+          values: values.map((value, index) => ({
+            value,
+            position: index,
+            isActive: true,
+          })),
+        });
+
+        console.log("Option updated successfully:", updatedOption);
+        return json({ success: true, option: updatedOption });
+      } catch (error) {
+        console.error("Error updating option:", error);
+        return json({ success: false, error: error.message }, { status: 500 });
       }
-      
-      // Create the option in the database with all its values
-      const savedOption = await createOptions(admin.session.shop, {
-        name: optionName,
-        type: optionType, // e.g., "text", "color", "number", "image"
-        values: values.map((value, index) => ({
-          value,
-          position: index,
-          isActive: true
-        }))
-      });
-      
-      console.log("Option created successfully:", savedOption);
-      return json({ success: true, option: savedOption });
-    } catch (error) {
-      console.error("Error creating option:", error);
-      return json({ success: false, error: error.message }, { status: 500 });
     }
-  }
 
-  // Handle updating an existing product option
-  if (actionType === "Edit Option") {
-    const optionId = formData.get("optionId");
-    const optionSet = JSON.parse(formData.get("optionSet"));
-    const { optionName, values, optionType } = optionSet;
-    
-    try {
-      // Update the option and replace all its values
-      const updatedOption = await updateOptions(optionId, {
-        name: optionName,
-        type: optionType,
-        values: values.map((value, index) => ({
-          value,
-          position: index,
-          isActive: true
-        }))
-      });
-      
-      console.log("Option updated successfully:", updatedOption);
-      return json({ success: true, option: updatedOption });
-    } catch (error) {
-      console.error("Error updating option:", error);
-      return json({ success: false, error: error.message }, { status: 500 });
+    // Handle deleting one or more product options
+    if (actionType === "Delete Options") {
+      const optionIds = JSON.parse(formData.get("optionIds"));
+
+      try {
+        // Call the server-side function to delete the options from the database.
+        const result = await deleteOptions(optionIds, admin.session.shop);
+        console.log("Options deleted successfully:", result);
+        return json({
+          success: true,
+          count: result.count,
+          deletedOptions: result.deletedOptions,
+        });
+      } catch (error) {
+        console.error("Error deleting options:", error);
+        return json({ success: false, error: error.message }, { status: 500 });
+      }
     }
-  }
 
-  // Handle deleting one or more product options
-  if (actionType === "Delete Options") {
-    const optionIds = JSON.parse(formData.get("optionIds"));
-    
-    try {
-      // Call the server-side function to delete the options from the database.
-      const result = await deleteOptions(optionIds, admin.session.shop);
-      console.log("Options deleted successfully:", result);
-      return json({ 
-        success: true, 
-        count: result.count,
-        deletedOptions: result.deletedOptions 
-      });
-    } catch (error) {
-      console.error("Error deleting options:", error);
-      return json({ success: false, error: error.message }, { status: 500 });
-    }
-  }
-
-  return null;
+    return null;
   } catch (error) {
     console.error("Action function error:", error);
-    return json({ success: false, error: "An unexpected error occurred" }, { status: 500 });
+    return json(
+      { success: false, error: "An unexpected error occurred" },
+      { status: 500 },
+    );
   }
 };
 
 /**
  * Main Component - Product Options Manager
- * 
+ *
  * This component manages the entire product options interface including:
  * - Displaying existing options
  * - Creating new options via modals
@@ -186,18 +221,26 @@ export default function Index() {
   // Get initial data from the server loader
   const { options: loadedOptions = [] } = useLoaderData();
   const submit = useSubmit(); // Remix hook for form submissions
-  
+
   // Custom hooks for state management
-  const { options, handleToggleValueChecked, handleToggleAllValues } = useOptions(loadedOptions);
-  const { modalActive, editModalActive, productModalActive, toggleModal, toggleEditModal, toggleProductModal } = useModals();
+  const { options, handleToggleValueChecked, handleToggleAllValues } =
+    useOptions(loadedOptions);
+  const {
+    modalActive,
+    editModalActive,
+    productModalActive,
+    toggleModal,
+    toggleEditModal,
+    toggleProductModal,
+  } = useModals();
   const { toastActive, toastMessage, showToast, hideToast } = useToast();
-  
+
   // Local component state
   const [isLoading, setIsLoading] = useState(false); // Global loading state
   const [selectedItems, setSelectedItems] = useState([]); // Selected options for bulk operations
   const [expandedOptions, setExpandedOptions] = useState({}); // Which options are expanded in the list
   const [editingOption, setEditingOption] = useState(null); // Currently selected option for editing
-  
+
   // Product selection states (for applying options to specific products)
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [availableProducts] = useState([]); // TODO: Fetch from Shopify API
@@ -264,10 +307,13 @@ export default function Index() {
    * Sets the option to be edited and opens the modal
    * @param {Object} option - The option object to edit
    */
-  const openEditModal = useCallback((option) => {
-    setEditingOption(option);
-    toggleEditModal();
-  }, [toggleEditModal]);
+  const openEditModal = useCallback(
+    (option) => {
+      setEditingOption(option);
+      toggleEditModal();
+    },
+    [toggleEditModal],
+  );
 
   /**
    * Close the edit modal and clear the editing state
@@ -281,7 +327,7 @@ export default function Index() {
   /**
    * Handle creating a new product option
    * This function runs when the Add Option modal is submitted
-   * 
+   *
    * @param {Object} optionData - The form data from the modal
    * @param {string} optionData.optionName - Name of the option (e.g., "Color")
    * @param {Array} optionData.values - Array of values (e.g., ["Red", "Blue"])
@@ -294,7 +340,13 @@ export default function Index() {
       submit(
         {
           actionType: "Add Option",
-          optionSet: JSON.stringify(prepareOptionForSubmit(optionData.optionName, optionData.values, optionData.optionType)),
+          optionSet: JSON.stringify(
+            prepareOptionForSubmit(
+              optionData.optionName,
+              optionData.values,
+              optionData.optionType,
+            ),
+          ),
         },
         { method: "post" },
       );
@@ -312,7 +364,7 @@ export default function Index() {
   /**
    * Handle editing an existing product option
    * This function runs when the Edit Option modal is submitted
-   * 
+   *
    * @param {Object} editData - The form data from the edit modal
    * @param {string} editData.optionId - ID of the option being edited
    * @param {string} editData.optionName - Updated name of the option
@@ -328,7 +380,13 @@ export default function Index() {
         {
           actionType: "Edit Option",
           optionId: editData.optionId,
-          optionSet: JSON.stringify(prepareOptionForSubmit(editData.optionName, editData.values, editData.optionType)),
+          optionSet: JSON.stringify(
+            prepareOptionForSubmit(
+              editData.optionName,
+              editData.values,
+              editData.optionType,
+            ),
+          ),
         },
         { method: "post" },
       );
@@ -346,7 +404,7 @@ export default function Index() {
   /**
    * Handle single option deletion
    * Deletes a single option with confirmation and proper error handling
-   * 
+   *
    * @param {string} optionId - ID of the option to delete
    */
   const handleSingleDelete = async (optionId) => {
@@ -355,7 +413,7 @@ export default function Index() {
       return;
     }
 
-    const optionToDelete = options.find(opt => opt.id === optionId);
+    const optionToDelete = options.find((opt) => opt.id === optionId);
     if (!optionToDelete) {
       showToast("Option not found.");
       return;
@@ -372,10 +430,9 @@ export default function Index() {
         },
         { method: "post" },
       );
-      
+
       // Show success message
       showToast(`Successfully deleted option: ${optionToDelete.name}`);
-
     } catch (error) {
       console.error("Delete operation failed:", error);
       showToast(`Failed to delete option: ${error.message}`);
@@ -396,8 +453,10 @@ export default function Index() {
     }
 
     // Get option names for better user feedback
-    const optionsToDelete = options.filter(option => selectedItems.includes(option.id));
-    const optionNames = optionsToDelete.map(opt => opt.name).join(', ');
+    const optionsToDelete = options.filter((option) =>
+      selectedItems.includes(option.id),
+    );
+    const optionNames = optionsToDelete.map((opt) => opt.name).join(", ");
 
     setIsLoading(true);
 
@@ -410,15 +469,14 @@ export default function Index() {
         },
         { method: "post" },
       );
-      
+
       // Show success message with details
       showToast(
-        `Successfully deleted ${deletedCount} option${deletedCount === 1 ? "" : "s"}: ${optionNames}`
+        `Successfully deleted ${deletedCount} option${deletedCount === 1 ? "" : "s"}: ${optionNames}`,
       );
 
       // Clear the selection state
       setSelectedItems([]);
-
     } catch (error) {
       console.error("Delete operation failed:", error);
       showToast(`Failed to delete options: ${error.message}`);
@@ -429,9 +487,7 @@ export default function Index() {
 
   return (
     <Frame>
-      {toastActive && (
-        <Toast content={toastMessage} onDismiss={hideToast} />
-      )}
+      {toastActive && <Toast content={toastMessage} onDismiss={hideToast} />}
       <Page title="Product Options Manager" fullWidth>
         <Layout>
           <Layout.Section variant="oneHalf">

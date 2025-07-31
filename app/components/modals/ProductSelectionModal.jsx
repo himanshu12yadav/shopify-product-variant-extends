@@ -1,10 +1,6 @@
-import {
-  Modal,
-  Box,
-  Text,
-  Badge,
-  Checkbox
-} from "@shopify/polaris";
+import { Modal, Box, Text, Badge, Checkbox, TextField } from "@shopify/polaris";
+import { useEffect, useState } from "react";
+import { useSubmit } from "@remix-run/react";
 
 export default function ProductSelectionModal({
   active,
@@ -12,8 +8,42 @@ export default function ProductSelectionModal({
   options,
   selectedProducts,
   availableProducts,
-  onProductSelection
+  onProductSelection,
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const submit = useSubmit();
+
+  const filteredProducts = availableProducts.filter(
+    (product) =>
+      product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.handle.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  useEffect(() => {
+    console.log("Search Query: ", searchQuery);
+
+    const handleSubmit = () => {
+      if (searchQuery.trim()) {
+        const formData = new FormData();
+        formData.append("query", searchQuery);
+        formData.append("selectedProducts", JSON.stringify(selectedProducts));
+        formData.append("options", JSON.stringify(options));
+        formData.append("actionType", "search-products");
+
+        submit(formData, {
+          method: "post",
+          replace: false,
+        });
+      }
+    };
+
+    const debounceTimer = setTimeout(() => {
+      handleSubmit();
+    }, 500);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, selectedProducts, options, submit]);
+
   return (
     <Modal
       open={active}
@@ -49,6 +79,14 @@ export default function ProductSelectionModal({
               <Badge tone="info">{selectedProducts.length} selected</Badge>
             </div>
 
+            <TextField
+              label="Search products"
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by product name or handle"
+              autoComplete="off"
+            />
+
             <Box
               background="bg-surface-secondary"
               padding="300"
@@ -62,7 +100,7 @@ export default function ProductSelectionModal({
                   gap: "8px",
                 }}
               >
-                {availableProducts.map((product) => {
+                {filteredProducts.map((product) => {
                   const isSelected = selectedProducts.includes(product.id);
                   return (
                     <div
@@ -125,8 +163,7 @@ export default function ProductSelectionModal({
                   <strong>Selected Products:</strong>{" "}
                   {selectedProducts
                     .map(
-                      (id) =>
-                        availableProducts.find((p) => p.id === id)?.title,
+                      (id) => availableProducts.find((p) => p.id === id)?.title,
                     )
                     .join(", ")}
                 </Text>
@@ -134,9 +171,9 @@ export default function ProductSelectionModal({
             )}
 
             <Text variant="bodySm" color="subdued">
-              Select products where you want to apply these custom options.
-              All {options.length} option{options.length !== 1 ? "s" : ""}{" "}
-              will be applied to the selected products.
+              Select products where you want to apply these custom options. All{" "}
+              {options.length} option{options.length !== 1 ? "s" : ""} will be
+              applied to the selected products.
             </Text>
           </div>
         </Box>
